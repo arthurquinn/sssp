@@ -133,30 +133,30 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
 
         if (arrays_different(n, dist_prev, dist_curr)) {
 
-            std::cout << "Copied from device:" << std::endl;
-            for (int i = 0; i < n; i++) {
-                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            }
+            // std::cout << "Copied from device:" << std::endl;
+            // for (int i = 0; i < n; i++) {
+            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            // }
 
-            for (int i = 0; i < n; i++) {
-                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            }
+            // for (int i = 0; i < n; i++) {
+            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            // }
 
-            std::cin.get();
+            // std::cin.get();
 
             // swap prev and curr
             memcpy(dist_prev, dist_curr, n * sizeof(int));
 
-            std::cout << "Swapped mem: " << std::endl;
-            for (int i = 0; i < n; i++) {
-                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            }
+            // std::cout << "Swapped mem: " << std::endl;
+            // for (int i = 0; i < n; i++) {
+            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            // }
 
-            for (int i = 0; i < n; i++) {
-                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            }
+            // for (int i = 0; i < n; i++) {
+            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            // }
 
-            std::cin.get();
+            // std::cin.get();
 
             // copy updated mem to device
             cudaMemcpy(d_dist_prev, dist_prev, n * sizeof(int), cudaMemcpyHostToDevice);
@@ -170,16 +170,17 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     cudaMemcpy(dist_curr, d_dist_curr, n * sizeof(int), cudaMemcpyDeviceToHost);
 
 
-    for (int i = 0; i < vertex_num; i++) {
-        std::cout << "Vertex " << i << " dist: " << dist_curr[i] << std::endl;
-        std::cin.get();
-    }
+    // for (int i = 0; i < vertex_num; i++) {
+    //     std::cout << "Vertex " << i << " dist: " << dist_curr[i] << std::endl;
+    //     std::cin.get();
+    // }
 
 
+    
 
 
-    std::cout << "Num vertices: " << vertex_num << std::endl;
-    std::cout << "Num edges: " << edge_num << std::endl;
+    // std::cout << "Num vertices: " << vertex_num << std::endl;
+    // std::cout << "Num edges: " << edge_num << std::endl;
 
     std::cout << "Took " << getTime() << "ms.\n";
 }
