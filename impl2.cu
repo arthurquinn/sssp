@@ -13,7 +13,7 @@ __global__ void neighborHandling_kernel(std::vector<initial_vertex> * peeps, int
     //Offset will tell you who I am.
 }
 
-void neighborHandler(std::vector<initial_vertex> * peeps, int blockSize, int blockNum){
+void neighborHandler(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, int nEdges){
     setTime();
 
     /*

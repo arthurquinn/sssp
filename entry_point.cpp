@@ -140,10 +140,10 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount);
+		    puller(&parsedGraph, bsize, bcount, nEdges);
 		    break;
 		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount);
+		    neighborHandler(&parsedGraph, bsize, bcount, nEdges);
 		    break;
 		default:
 		    own(&parsedGraph, bsize, bcount);

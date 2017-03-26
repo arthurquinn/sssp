@@ -53,6 +53,8 @@ uint parse_graph::parse(
 			neighbor nbrToAdd;
 			nbrToAdd.srcIndex = srcVertexIndex;
 
+			// std::cout << "Adding neighbor with srcIndex: " << srcVertexIndex << std::endl;
+
 			Additionalargc=0;
 			Additionalargv[ Additionalargc ] = strtok( NULL, delim );
 			while( Additionalargv[ Additionalargc ] != NULL ){
@@ -88,7 +90,13 @@ uint parse_graph::parse(
 			initGraph.at(dstVertexIndex).nbrs.push_back( nbrToAdd );
 			nEdges++;
 		}
+
+		// std::cout << "Edge " << nEdges << " added: [" << srcVertexIndex << ", " << dstVertexIndex << "]" << std::endl;
+		// std::cin.get();
 	}
+
+
+	// std::cout << "First vertex has " << initGraph.at(0).nbrs.size() << " edges" << std::endl;
 
 	return nEdges;
 
