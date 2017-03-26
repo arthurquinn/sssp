@@ -5,6 +5,8 @@
 
 #include "initial_graph.hpp"
 
+#define SSSP_INF 1073741824
+
 namespace parse_graph {
 	uint parse(
 		std::ifstream& inFile,

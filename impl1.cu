@@ -15,7 +15,7 @@ struct edge {
     unsigned int w;
 };
 
-__global__ void pulling_kernel(struct edge * L, int * dist_prev, int * dist_curr, int numEdges, int numVertices, int * anyChange) {
+__global__ void pulling_kernel(struct edge * L, int * dist_prev, int * dist_curr, int numEdges, int numVertices) {
 
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int warp_id = thread_id / WARP_NUM;
@@ -31,12 +31,21 @@ __global__ void pulling_kernel(struct edge * L, int * dist_prev, int * dist_curr
         int v = L[i].v;
         int w = L[i].w;
 
-        if (dist_prev[u] + w < dist_prev[v]) {
-            atomicMin(&dist_curr[v], dist_prev[u] + w);
-            *anyChange = 1;
+        int newDist = dist_prev[u] == SSSP_INF ? SSSP_INF : dist_prev[u] + w;
+        if (newDist < dist_prev[v]) {
+            atomicMin(&dist_curr[v], newDist);
         }
     }
 
+}
+
+bool arrays_different(const int n, const int * arr1, const int * arr2) {
+    for (int i = 0; i < n; i++) {
+        if (arr1[i] != arr2[i]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, int nEdges) {
@@ -55,12 +64,9 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     // In order for parsing the peeps vector into L to work - peeps must be sorted 
     int n = peeps->size();
 
-    int anyChange = 0;
-
     struct edge * L = (struct edge *)malloc(sizeof(struct edge) * nEdges);
     int * dist_prev = (int *)malloc(sizeof(int) * n);
     int * dist_curr = (int *)malloc(sizeof(int) * n);
-    int * anyChangePtr = &anyChange;
 
     std::vector<initial_vertex>::iterator itr;
     int vertex_num = 0;
@@ -104,22 +110,19 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     struct edge * d_L;
     int * d_dist_prev;
     int * d_dist_curr;
-    int * d_anyChange;
     cudaMalloc((void **)&d_L, nEdges * sizeof(struct edge));
     cudaMalloc((void **)&d_dist_prev, n * sizeof(int));
     cudaMalloc((void **)&d_dist_curr, n * sizeof(int));
-    cudaMalloc((void **)&d_anyChange, sizeof(int));
     cudaMemcpy(d_L, L, nEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
     cudaMemcpy(d_dist_prev, dist_prev, n * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_dist_curr, dist_curr, n * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_anyChange, anyChangePtr, sizeof(int), cudaMemcpyHostToDevice);
 
     // Timing code
 
     // Bellman Ford algorithm loop
     for (int i = 0; i < vertex_num - 1; i++) {
         // Invoke kernel
-        pulling_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, nEdges, n, d_anyChange);
+        pulling_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, nEdges, n);
         cudaDeviceSynchronize();
 
         std::cout << "Iteration: " << i << " complete." << std::endl;
@@ -127,19 +130,37 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
         // Copy results from device
         cudaMemcpy(dist_prev, d_dist_prev, n * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, n * sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(anyChangePtr, d_anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 
-        if (*anyChangePtr) {
-            // swap prev and curr; set any change back to 0
-            int * temp = dist_prev;
-            int * dist_prev = dist_curr;
-            int * dist_curr = temp;
-            *anyChangePtr = 0;
+        if (arrays_different(n, dist_prev, dist_curr)) {
+
+            std::cout << "Copied from device:" << std::endl;
+            for (int i = 0; i < n; i++) {
+                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            }
+
+            for (int i = 0; i < n; i++) {
+                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            }
+
+            std::cin.get();
+
+            // swap prev and curr
+            memcpy(dist_prev, dist_curr, n * sizeof(int));
+
+            std::cout << "Swapped mem: " << std::endl;
+            for (int i = 0; i < n; i++) {
+                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            }
+
+            for (int i = 0; i < n; i++) {
+                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            }
+
+            std::cin.get();
 
             // copy updated mem to device
             cudaMemcpy(d_dist_prev, dist_prev, n * sizeof(int), cudaMemcpyHostToDevice);
             cudaMemcpy(d_dist_curr, dist_curr, n * sizeof(int), cudaMemcpyHostToDevice);
-            cudaMemcpy(d_anyChange, anyChangePtr, sizeof(int), cudaMemcpyHostToDevice);
         } else {
             break;
         }

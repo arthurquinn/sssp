@@ -6,8 +6,6 @@
 
 #include "parse_graph.hpp"
 
-#define SSSP_INF 1073741824
-
 uint parse_graph::parse(
 		std::ifstream& inFile,
 		std::vector<initial_vertex>& initGraph,
