@@ -9,16 +9,11 @@
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
+#include "enumerations.hpp"
 
 #include "opt.cu"
 #include "impl2.cu"
 #include "impl1.cu" 
-
-enum class ProcessingType {Push, Neighbor, Own, Unknown};
-enum SyncMode {InCore, OutOfCore};
-enum SyncMode syncMethod;
-enum SmemMode {UseSmem, UseNoSmem};
-enum SmemMode smemMethod;
 
 // Open files safely.
 template <typename T_file>
@@ -140,7 +135,7 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount, nEdges);
+		    puller(&parsedGraph, bsize, bcount, nEdges, syncMethod);
 		    break;
 		case ProcessingType::Neighbor:
 		    neighborHandler(&parsedGraph, bsize, bcount, nEdges);
