@@ -99,6 +99,8 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
             // std::cout << "Neighbor: " << neighbor_itr->srcIndex << std::endl;
             // std::cout << "Edge Weight: " << neighbor_itr->edgeValue.weight << std::endl;
 
+            // std::cin.get();
+
             edge_num++;
         }
 
@@ -176,7 +178,7 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     // }
 
 
-    
+
 
 
     // std::cout << "Num vertices: " << vertex_num << std::endl;
