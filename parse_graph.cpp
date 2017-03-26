@@ -91,7 +91,9 @@ uint parse_graph::parse(
 			nEdges++;
 		}
 
-		// std::cout << "Edge " << nEdges << " added: [" << srcVertexIndex << ", " << dstVertexIndex << "]" << std::endl;
+
+
+		// std::cout << "Number of neighbors for vertex " << srcVertexIndex << ": " << initGraph.at(srcVertexIndex).nbrs.size() << std::endl;
 		// std::cin.get();
 	}
 

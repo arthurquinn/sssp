@@ -1,10 +1,13 @@
 #include <vector>
 #include <iostream>
+#include <algorithm>
 
 #include "utils.h"
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
+
+#define WARP_NUM 32
 
 struct edge {
     unsigned int u;
@@ -12,13 +15,31 @@ struct edge {
     unsigned int w;
 };
 
-__global__ void pulling_kernel(std::vector<initial_vertex> * peeps, int offset, int * anyChange){
+__global__ void pulling_kernel(struct edge * L, int * dist_prev, int * dist_curr, int numEdges, int numVertices, int * anyChange) {
 
-    //update me based on my neighbors. Toggle anyChange as needed.
-    //offset will tell you who I am.
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int warp_id = thread_id / WARP_NUM;
+    int laneid = threadIdx.x % WARP_NUM;
+
+    int load = numEdges % WARP_NUM == 0 ? numEdges / WARP_NUM : numEdges / WARP_NUM + 1;
+    int beg = load * warp_id;
+    int end = min(numEdges, beg + load);
+    beg = beg + laneid;
+
+    for (int i = beg; i < end; i += 32) {
+        int u = L[i].u;
+        int v = L[i].v;
+        int w = L[i].w;
+
+        if (dist_prev[u] + w < dist_prev[v]) {
+            atomicMin(&dist_curr[v], dist_prev[u] + w);
+            *anyChange = 1;
+        }
+    }
+
 }
 
-void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, int nEdges){
+void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, int nEdges) {
     setTime();
 
     /*
@@ -34,9 +55,12 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     // In order for parsing the peeps vector into L to work - peeps must be sorted 
     int n = peeps->size();
 
+    int anyChange = 0;
+
     struct edge * L = (struct edge *)malloc(sizeof(struct edge) * nEdges);
     int * dist_prev = (int *)malloc(sizeof(int) * n);
     int * dist_curr = (int *)malloc(sizeof(int) * n);
+    int * anyChangePtr = &anyChange;
 
     std::vector<initial_vertex>::iterator itr;
     int vertex_num = 0;
@@ -51,7 +75,7 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
         // std::cout << "dist_prev[" << vertex_num << "] = " << itr->get_vertex_ref().distance << std::endl;
         // std::cout << "dist_curr[" << vertex_num << "] = " << itr->get_vertex_ref().distance << std::endl;
 
-        // std::cout << "Number of neighbors: " << itr->nbrs.size();
+        // std::cout << "Number of neighbors: " << itr->nbrs.size() << std::endl;
 
         std::vector<neighbor>::iterator neighbor_itr;
         for (neighbor_itr = itr->nbrs.begin(); neighbor_itr < itr->nbrs.end(); ++neighbor_itr) {
@@ -76,16 +100,62 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
         // std::cin.get();
     }
 
-    // struct edge * edgeList = malloc(sizeof(struct edge) * peeps.size());
+    // Copy host mem to device mem
+    struct edge * d_L;
+    int * d_dist_prev;
+    int * d_dist_curr;
+    int * d_anyChange;
+    cudaMalloc((void **)&d_L, nEdges * sizeof(struct edge));
+    cudaMalloc((void **)&d_dist_prev, n * sizeof(int));
+    cudaMalloc((void **)&d_dist_curr, n * sizeof(int));
+    cudaMalloc((void **)&d_anyChange, sizeof(int));
+    cudaMemcpy(d_L, L, nEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dist_prev, dist_prev, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dist_curr, dist_curr, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_anyChange, anyChangePtr, sizeof(int), cudaMemcpyHostToDevice);
 
-    // // allocate device mem
-    // for (std::vector<initial_vertex>::size_type i = 0; i != peeps.size(); i++) {
+    // Timing code
 
-    // }
+    // Bellman Ford algorithm loop
+    for (int i = 0; i < vertex_num - 1; i++) {
+        // Invoke kernel
+        pulling_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, nEdges, n, d_anyChange);
+        cudaDeviceSynchronize();
 
-    // std::vector<initial_vertex> * d_peeps;
+        std::cout << "Iteration: " << i << " complete." << std::endl;
 
-    // int * d_anyChange;
+        // Copy results from device
+        cudaMemcpy(dist_prev, d_dist_prev, n * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(dist_curr, d_dist_curr, n * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(anyChangePtr, d_anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+
+        if (*anyChangePtr) {
+            // swap prev and curr; set any change back to 0
+            int * temp = dist_prev;
+            int * dist_prev = dist_curr;
+            int * dist_curr = temp;
+            *anyChangePtr = 0;
+
+            // copy updated mem to device
+            cudaMemcpy(d_dist_prev, dist_prev, n * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_dist_curr, dist_curr, n * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_anyChange, anyChangePtr, sizeof(int), cudaMemcpyHostToDevice);
+        } else {
+            break;
+        }
+    }
+
+    // After all iterations get final result
+    cudaMemcpy(dist_curr, d_dist_curr, n * sizeof(int), cudaMemcpyDeviceToHost);
+
+
+    for (int i = 0; i < vertex_num; i++) {
+        std::cout << "Vertex " << i << " dist: " << dist_curr[i] << std::endl;
+        std::cin.get();
+    }
+
+
+
 
     std::cout << "Num vertices: " << vertex_num << std::endl;
     std::cout << "Num edges: " << edge_num << std::endl;

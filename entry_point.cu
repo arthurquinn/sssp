@@ -12,7 +12,7 @@
 
 #include "opt.cu"
 #include "impl2.cu"
-#include "impl1.cu"
+#include "impl1.cu" 
 
 enum class ProcessingType {Push, Neighbor, Own, Unknown};
 enum SyncMode {InCore, OutOfCore};
@@ -49,8 +49,8 @@ int main( int argc, char** argv )
 		std::ofstream outputFile;
 		int selectedDevice = 0;
 		int bsize = 0, bcount = 0;
-		int vwsize = 32;
-		int threads = 1;
+		//int vwsize = 32;
+		//int threads = 1;
 		long long arbparam = 0;
 		bool nonDirectedGraph = false;		// By default, the graph is directed.
 		ProcessingType processingMethod = ProcessingType::Unknown;
@@ -71,17 +71,17 @@ int main( int argc, char** argv )
 				    processingMethod = ProcessingType::Own;
 				else{
            std::cerr << "\n Un-recognized method parameter value \n\n";
-           exit;
+           return 0;
          }   
 			}
 			else if ( !strcmp(argv[iii], "--sync") && iii != argc-1 ) {
 				if ( !strcmp(argv[iii+1], "incore") )
 				        syncMethod = InCore;
-				if ( !strcmp(argv[iii+1], "outcore") )
+				else if ( !strcmp(argv[iii+1], "outcore") )
     				        syncMethod = OutOfCore;
 				else{
            std::cerr << "\n Un-recognized sync parameter value \n\n";
-           exit;
+           return 0;
          }  
 
 			}
@@ -92,7 +92,7 @@ int main( int argc, char** argv )
     				        smemMethod = UseNoSmem;
         else{
            std::cerr << "\n Un-recognized usesmem parameter value \n\n";
-           exit;
+           return 0;
          }  
 			}
 			else if( !strcmp( argv[iii], "--input" ) && iii != argc-1 /*is not the last one*/)
@@ -106,7 +106,7 @@ int main( int argc, char** argv )
 
 		if(bsize <= 0 || bcount <= 0){
 			std::cerr << "Usage: " << usage;
-      exit;
+      		//exit;
 			throw std::runtime_error("\nAn initialization error happened.\nExiting.");
 		}
 		if( !inputFile.is_open() || processingMethod == ProcessingType::Unknown ) {
