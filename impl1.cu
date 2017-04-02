@@ -17,7 +17,6 @@ struct edge {
 };
 
 __global__ void bellman_ford_outcore_kernel(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices) {
-
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int warp_id = thread_id / WARP_NUM;
     int laneid = threadIdx.x % WARP_NUM;
@@ -37,11 +36,32 @@ __global__ void bellman_ford_outcore_kernel(const struct edge * L, int * dist_pr
             atomicMin(&dist_curr[v], newDist);
         }
     }
-
 }
 
-__global__ void bellman_ford_incore_kernel(const struct edge * L, int * dist, const int numEdges, const int numVertices) {
+__global__ void bellman_ford_incore_kernel(const struct edge * L, int * dist, const int numEdges, const int numVertices, int * anyChange) {
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int warp_id = thread_id / WARP_NUM;
+    int laneid = threadIdx.x % WARP_NUM;
 
+    int load = numEdges % WARP_NUM == 0 ? numEdges / WARP_NUM : numEdges / WARP_NUM + 1;
+    int beg = load * warp_id;
+    int end = min(numEdges, beg + load);
+    beg = beg + laneid;
+
+    for (int i = beg; i < end; i += 32) {
+        int u = L[i].u;
+        int v = L[i].v;
+        int w = L[i].w;
+
+        int temp_dist = dist[u] == SSSP_INF ? SSSP_INF : dist[u] + w;
+        if (temp_dist < dist[v]) {
+            int old = atomicMin(&dist[v], temp_dist);
+            if (old > temp_dist) {
+                *anyChange = 1;
+                printf("Any change during %d", *anyChange);
+            }
+        }
+    }
 }
 
 bool arrays_different(const int n, const int * arr1, const int * arr2) {
@@ -82,30 +102,30 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
 
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
-            std::cout << "Copied from device:" << std::endl;
-            for (int i = 0; i < numVertices; i++) {
-                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            }
+            // std::cout << "Copied from device:" << std::endl;
+            // for (int i = 0; i < numVertices; i++) {
+            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            // }
 
-            for (int i = 0; i < numVertices; i++) {
-                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            }
+            // for (int i = 0; i < numVertices; i++) {
+            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            // }
 
-            std::cin.get();
+            // std::cin.get();
 
             // swap prev and curr
             memcpy(dist_prev, dist_curr, numVertices * sizeof(int));
 
-            std::cout << "Swapped mem: " << std::endl;
-            for (int i = 0; i < numVertices; i++) {
-                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            }
+            // std::cout << "Swapped mem: " << std::endl;
+            // for (int i = 0; i < numVertices; i++) {
+            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            // }
 
-            for (int i = 0; i < numVertices; i++) {
-                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            }
+            // for (int i = 0; i < numVertices; i++) {
+            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            // }
 
-            std::cin.get();
+            // std::cin.get();
 
             // copy updated mem to device
             cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
@@ -119,6 +139,48 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
     cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
 }
 
+void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
+    // Copy host mem to device
+    struct edge * d_L;
+    int * d_dist;
+    int * d_anyChange;
+    cudaMalloc((void **)&d_L, numEdges * sizeof(struct edge));
+    cudaMalloc((void **)&d_dist, numVertices * sizeof(int));
+    cudaMalloc((void **)&d_anyChange, sizeof(int));
+    cudaMemcpy(d_L, L, numEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dist, dist, numVertices * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Timing Code
+
+    // Bellman ford algorithm loop
+    int * anyChange = (int *)malloc(sizeof(int));
+    for (int i = 0; i < numVertices - 1; i++) {
+        
+        // Invoke kernel
+        bellman_ford_incore_kernel<<<blockNum, blockSize>>>(d_L, d_dist, numEdges, numVertices, d_anyChange);
+
+        // Check if any value was changed
+        cudaMemcpy(anyChange, d_anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+
+        // If a value was changed, set any change back to 0 and continue; else break out of loop
+        if (*anyChange == 1) {
+            *anyChange = 0;
+            cudaMemcpy(d_anyChange, anyChange, sizeof(int), cudaMemcpyHostToDevice);
+        } else {
+            break;
+        }
+    }
+
+    // dist will store results of algorithm
+    cudaMemcpy(dist, d_dist, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // // Code to print out result array
+    // for (int i = 0; i < numVertices; i++) {
+    //     std::cout << dist[i] << " ";
+    // }
+    // std::cout << std::endl;
+}
+
 
 void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, int nEdges, enum SyncMode syncMethod) {
     setTime();
@@ -130,7 +192,7 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
     // Sorting part
     // std::sort(peeps->begin(), peeps->end(), [] (initial_vertex const& a, initial_vertex const& b) { return a.vertexValue.distance < b.vertexValue.distance; });
 
-    std::cout << "Size: " << peeps->size() << std::endl;
+    // std::cout << "Size: " << peeps->size() << std::endl;
     
 
     // In order for parsing the peeps vector into L to work - peeps must be sorted 
@@ -182,7 +244,7 @@ void puller(std::vector<initial_vertex> * peeps, int blockSize, int blockNum, in
 
     switch (syncMethod) {
         case InCore:
-            std::cout << "Processing incore" << std::endl;
+            bellman_ford_incore(L, dist_curr, nEdges, n, blockNum, blockSize);
             break;
         case OutOfCore:
             bellman_ford_outcore(L, dist_prev, dist_curr, nEdges, n, blockNum, blockSize);
