@@ -65,30 +65,32 @@ int main( int argc, char** argv )
 				else if ( !strcmp(argv[iii+1], "opt") )
 				    processingMethod = ProcessingType::Own;
 				else{
-           std::cerr << "\n Un-recognized method parameter value \n\n";
-           return 0;
-         }   
+		           std::cerr << "\n Un-recognized method parameter value \n\n";
+		           return 0;
+         		}   
 			}
 			else if ( !strcmp(argv[iii], "--sync") && iii != argc-1 ) {
 				if ( !strcmp(argv[iii+1], "incore") )
 				        syncMethod = InCore;
 				else if ( !strcmp(argv[iii+1], "outcore") )
     				        syncMethod = OutOfCore;
-				else{
-           std::cerr << "\n Un-recognized sync parameter value \n\n";
-           return 0;
-         }  
+				else {
+		           std::cerr << "\n Un-recognized sync parameter value \n\n";
+		           return 0;
+         		}  
 
 			}
 			else if ( !strcmp(argv[iii], "--usesmem") && iii != argc-1 ) {
-				if ( !strcmp(argv[iii+1], "yes") )
-				        smemMethod = UseSmem;
-				if ( !strcmp(argv[iii+1], "no") )
-    				        smemMethod = UseNoSmem;
-        else{
-           std::cerr << "\n Un-recognized usesmem parameter value \n\n";
-           return 0;
-         }  
+				if ( !strcmp(argv[iii+1], "yes") ) {
+				    smemMethod = UseSmem;
+				}
+				else if ( !strcmp(argv[iii+1], "no") ) {
+					smemMethod = UseNoSmem;
+				}        
+        		else {
+		           std::cerr << "\n Un-recognized usesmem parameter value \n\n";
+		           return 0;
+         		}  
 			}
 			else if( !strcmp( argv[iii], "--input" ) && iii != argc-1 /*is not the last one*/)
 				openFileToAccess< std::ifstream >( inputFile, std::string( argv[iii+1] ) );
@@ -135,7 +137,7 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount, nEdges, syncMethod);
+		    puller(&parsedGraph, bsize, bcount, nEdges, syncMethod, smemMethod);
 		    break;
 		case ProcessingType::Neighbor:
 		    neighborHandler(&parsedGraph, bsize, bcount, nEdges);
