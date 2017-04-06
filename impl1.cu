@@ -93,12 +93,13 @@ __global__ void bellman_ford_incore_kernel(const struct edge * L, int * dist, co
 __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const int * dist_prev, int * dist_curr, const int numEdges, const int numVertices) {
     // Set up shared mem
     extern __shared__ int a[];
-    int * s_dist_prev = a;
-    int * s_dist_curr = a + numVertices;
-    struct edge * s_L = (struct edge *)(a + numVertices * 2);
+    int * shared_dist_prev = a;
+    int * shared_dist_curr = a + numVertices;
+    struct edge * shared_L = (struct edge *)(a + 2 * numVertices); 
 
     // Set up thread identifiers
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int thread_num = blockDim.x * gridDim.x;
     int warp_id = thread_id / WARP_NUM;
     int lane_id = threadIdx.x % WARP_NUM;
 
@@ -108,25 +109,43 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
     int end = min(numEdges, beg + load);
     beg = beg + lane_id;
 
-    if (thread_id < numEdges) {
+    // Load data into shared mem
+    int vertex_load = numVertices % thread_num ? numVertices / thread_num + 1 : numVertices / thread_num;
+    for (int i = 0; i < vertex_load; i++) {
+        if (thread_id < numVertices) {
+            shared_dist_prev[threadIdx.x] = dist_prev[thread_id];
+            shared_dist_curr[threadIdx.x] = dist_curr[thread_id];
 
-        printf("L[%d].u = %d\n", thread_id, L[thread_id].u);
-        printf("L[%d].v = %d\n", thread_id, L[thread_id].v);
-        printf("L[%d].w = %d\n", thread_id, L[thread_id].w);
+            printf("shared_dist_prev[%d] = %d\n", threadIdx.x, shared_dist_prev[threadIdx.x]);
+            printf("shared_dist_curr[%d] = %d\n", threadIdx.x, shared_dist_curr[threadIdx.x]);
+        }
+    }
 
-        s_L[threadIdx.x] = L[thread_id];
-        s_dist_prev[threadIdx.x] = dist_prev[thread_id];
-        s_dist_curr[threadIdx.x] = dist_curr[thread_id];
+    int edge_load = numEdges % thread_num ? numEdges / thread_num + 1 : numEdges / thread_num;
+    for (int i = 0; i < edge_load; i++) {
+        if (thread_id < numEdges) {
+            shared_L[threadIdx.x] = L[thread_id];
 
-        printf("s_L[%d].u = %d\n", threadIdx.x, s_L[threadIdx.x].u);
-        printf("s_L[%d].v = %d\n", threadIdx.x, s_L[threadIdx.x].v);
-        printf("s_L[%d].w = %d\n", threadIdx.x, s_L[threadIdx.x].w);
-        __syncthreads();
+            printf("shared_L[%d].u = %d\n", threadIdx.x, shared_L[threadIdx.x].u);
+            printf("shared_L[%d].v = %d\n", threadIdx.x, shared_L[threadIdx.x].v);
+            printf("shared_L[%d].w = %d\n", threadIdx.x, shared_L[threadIdx.x].w);
+        }
+    }
+    __syncthreads();
 
-        segment_scan(lane_id, s_L, s_dist_prev, s_dist_curr);
+    // Segment scan to find min and store in dist_curr
+    for (int i = beg; i < end; i += 32) {
+        if (threadIdx.x < numEdges){
+            segment_scan(lane_id, shared_L, shared_dist_prev, shared_dist_curr);
+            if (threadIdx.x == blockDim.x - 1 || shared_L[threadIdx.x].v != shared_L[threadIdx.x + 1].v) {
+                atomicMin(&dist_curr[shared_L[threadIdx.x].v], shared_dist_curr[shared_L[threadIdx.x].v]);
+            }
+        }
+    }
 
-        printf("s_dist_curr[%d] = %d\n", threadIdx.x, s_dist_curr[threadIdx.x]);
-        __syncthreads();
+    if (thread_id < numVertices) {
+        printf("shared_dist_prev[%d] = %d\n", threadIdx.x, shared_dist_prev[threadIdx.x]);
+        printf("shared_dist_curr[%d] = %d\n", threadIdx.x, shared_dist_curr[threadIdx.x]);
     }
 
 }
@@ -158,7 +177,8 @@ void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dis
     for (int i = 0; i < numVertices - 1; i++) {
 
         std::cout << "Iteration " << i << std::endl;
-        int smem_size = numEdges * sizeof(struct edge) + numVertices * sizeof(int) + numVertices * sizeof(int);
+
+        int smem_size = numEdges * sizeof(struct edge) + 2 * numVertices * sizeof(int);
         bellman_ford_segment_scan_kernel<<<blockNum, blockSize, smem_size>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
 
@@ -317,6 +337,7 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
 void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVertices, enum SyncMode syncMethod, enum SmemMode smemMode) {
     setTime();
 
+    // Create edge list array
     int numEdges = peeps->size();
     struct edge * L = (struct edge *)malloc(sizeof(struct edge) * numEdges);
     std::vector<edge>::iterator itr;
@@ -328,41 +349,52 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
         edge_num++;
     }
 
-    for (int i = 0; i < numEdges; i++) {
-        std::cout << "L[" << i << "].u = " << L[i].u << std::endl;
-        std::cout << "L[" << i << "].v = " << L[i].v << std::endl;
-        std::cout << "L[" << i << "].w = " << L[i].w << std::endl;
+    // for (int i = 0; i < numEdges; i++) {
+    //     std::cout << "L[" << i << "].u = " << L[i].u << std::endl;
+    //     std::cout << "L[" << i << "].v = " << L[i].v << std::endl;
+    //     std::cout << "L[" << i << "].w = " << L[i].w << std::endl;
+    // }
+
+    // Allocate space for dist_prev and dist_curr
+    int * dist_prev = (int *)malloc(numVertices * sizeof(int));
+    int * dist_curr = (int *)malloc(numVertices * sizeof(int));
+
+    for (int i = 0; i < numVertices; i++) {
+        if (i == 0) {
+            dist_prev[i] = 0;
+            dist_curr[i] = 0;
+        } else {
+            dist_prev[i] = SSSP_INF;
+            dist_curr[i] = SSSP_INF;
+        }
     }
 
+    switch (syncMethod) {
+        case InCore:
+            std::cout << "Starting incore" << std::endl;
+            bellman_ford_incore(L, dist_curr, numEdges, numVertices, blockNum, blockSize);
+            break;
+        case OutOfCore:
+            if (smemMode == UseNoSmem) {
+                std::cout << "Starting outcore" << std::endl;
+                bellman_ford_outcore(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
+            }
+            else if (smemMode == UseSmem) {
+                std::cout << "Starting segment scan" << std::endl;
+                bellman_ford_segment_scan(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
+            } else {
+                std::cout << "Invalid shared memory specification" << std::endl;
+            }
+            break;
+        default:
+            std::cout << "Invalid core processing method" << std::endl;
+            break;
+    }
 
-    return;
-
-    // switch (syncMethod) {
-    //     case InCore:
-    //         std::cout << "Starting incore" << std::endl;
-    //         bellman_ford_incore(L, dist_curr, nEdges, n, blockNum, blockSize);
-    //         break;
-    //     case OutOfCore:
-    //         if (smemMode == UseNoSmem) {
-    //             std::cout << "Starting outcore" << std::endl;
-    //             bellman_ford_outcore(L, dist_prev, dist_curr, nEdges, n, blockNum, blockSize);
-    //         }
-    //         else if (smemMode == UseSmem) {
-    //             std::cout << "Starting segment scan" << std::endl;
-    //             bellman_ford_segment_scan(L, dist_prev, dist_curr, nEdges, n, blockNum, blockSize);
-    //         } else {
-    //             std::cout << "Invalid shared memory specification" << std::endl;
-    //         }
-    //         break;
-    //     default:
-    //         std::cout << "Invalid core processing method" << std::endl;
-    //         break;
-    // }
-
-    // for (int i = 0; i < n; i++) {
-    //     std::cout << "" << dist_curr[i] << " ";
-    // }
-    // std::cout << std::endl;
+    for (int i = 0; i < numVertices; i++) {
+        std::cout << "" << dist_curr[i] << " ";
+    }
+    std::cout << std::endl;
 
     // std::cout << "Took " << getTime() << "ms.\n";
 }
