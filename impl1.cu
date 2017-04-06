@@ -16,35 +16,30 @@ __device__ void segment_scan(const int lane, const struct edge * L, const int * 
     int me;
     int other;
 
-    printf("seg: %d | lane: %d\n", threadIdx.x, lane);
-    printf("L[%d].u = %d\n", threadIdx.x, L[threadIdx.x].u);
-    printf("L[%d].v = %d\n", threadIdx.x, L[threadIdx.x].v);
-    printf("L[%d].w = %d\n", threadIdx.x, L[threadIdx.x].w);
-
     if (lane >= 1 && L[threadIdx.x].v == L[threadIdx.x - 1].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 1].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 1].u] + L[threadIdx.x - 1].w;
-        dist_curr[L[threadIdx.x].v] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(dist_curr[L[threadIdx.x].v], min(me, other));
     } 
     if (lane >= 2 && L[threadIdx.x].v == L[threadIdx.x - 2].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
-        other = dist_prev[L[threadIdx.x - 2].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 2].u] + L[threadIdx.x - 2].w;
-        dist_curr[L[threadIdx.x].v] = min(me, other);
+        other = dist_prev[L[threadIdx.x - 2].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 2].u] + L[threadIdx.x - 2].w;     
+        dist_curr[L[threadIdx.x].v] = min(dist_curr[L[threadIdx.x].v], min(me, other));
     } 
     if (lane >= 4 && L[threadIdx.x].v == L[threadIdx.x - 4].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 4].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 4].u] + L[threadIdx.x - 4].w;
-        dist_curr[L[threadIdx.x].v] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(dist_curr[L[threadIdx.x].v], min(me, other));
     } 
     if (lane >= 8 && L[threadIdx.x].v == L[threadIdx.x - 8].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 8].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 8].u] + L[threadIdx.x - 8].w;
-        dist_curr[L[threadIdx.x].v] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(dist_curr[L[threadIdx.x].v], min(me, other));
     } 
     if (lane >= 16 && L[threadIdx.x].v == L[threadIdx.x - 16].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 16].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 16].u] + L[threadIdx.x - 16].w;
-        dist_curr[L[threadIdx.x].v] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(dist_curr[L[threadIdx.x].v], min(me, other));
     }
 }
 
@@ -124,6 +119,8 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
 
             __syncthreads();
             printf("shared_dist_curr[%d] = %d\n", shared_L[threadIdx.x].u, shared_dist_curr[shared_L[threadIdx.x].u]);
+
+            atomicMin(&dist_curr[shared_L[dataid].v], shared_dist_curr[shared_L[dataid].v]);
         }
     }
 }
