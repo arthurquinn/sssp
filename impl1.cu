@@ -43,7 +43,7 @@ __device__ void segment_scan(const int lane, const struct edge * L, const int * 
     }
 }
 
-__global__ void bellman_ford_outcore_kernel(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices) {
+__global__ void bellman_ford_outcore_kernel(const struct edge * L, const int * dist_prev, int * dist_curr, const int numEdges, const int numVertices) {
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int warp_id = thread_id / WARP_NUM;
     int laneid = threadIdx.x % WARP_NUM;
@@ -97,51 +97,7 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
     int * shared_dist_curr = a + numVertices;
     struct edge * shared_L = (struct edge *)(a + 2 * numVertices); 
 
-    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
-    int thread_num = gridDim.x * blockDim.x;
-    int warp_id = thread_id / WARP_NUM;
-    int laneid = threadIdx.x % WARP_NUM;
-
-    int load = numEdges % WARP_NUM == 0 ? numEdges / WARP_NUM : numEdges / WARP_NUM + 1;
-    int beg = load * warp_id;
-    int end = min(numEdges, beg + load);
-    beg = beg + laneid;
-
-    // Load data into shared mem
-    int vertex_load = numVertices % thread_num ? numVertices / thread_num + 1 : numVertices / thread_num;
-    for (int i = 0; i < vertex_load; i++) {
-        if (thread_id < numVertices) {
-            shared_dist_prev[threadIdx.x] = dist_prev[thread_id];
-            shared_dist_curr[threadIdx.x] = dist_curr[thread_id];
-
-            printf("shared_dist_prev[%d] = %d\n", threadIdx.x, shared_dist_prev[threadIdx.x]);
-            printf("shared_dist_curr[%d] = %d\n", threadIdx.x, shared_dist_curr[threadIdx.x]);
-        }
-    }
-
-    int edge_load = numEdges % thread_num ? numEdges / thread_num + 1 : numEdges / thread_num;
-    for (int i = 0; i < edge_load; i++) {
-        if (thread_id < numEdges) {
-            shared_L[threadIdx.x] = L[thread_id];
-
-            printf("shared_L[%d].u = %d\n", threadIdx.x, shared_L[threadIdx.x].u);
-            printf("shared_L[%d].v = %d\n", threadIdx.x, shared_L[threadIdx.x].v);
-            printf("shared_L[%d].w = %d\n", threadIdx.x, shared_L[threadIdx.x].w);
-        }
-    }
-    __syncthreads();
-
-    if (thread_id < numEdges) {
-        segment_scan(laneid, shared_L, shared_dist_prev, shared_dist_curr);
-
-
-    }
-
-    if (thread_id < numVertices) {
-        printf("shared_dist_prev[%d] = %d\n", threadIdx.x, shared_dist_prev[threadIdx.x]);
-        printf("shared_dist_curr[%d] = %d\n", threadIdx.x, shared_dist_curr[threadIdx.x]);
-    }
-
+    
 }
 
 bool arrays_different(const int n, const int * arr1, const int * arr2) {
@@ -234,8 +190,13 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
     // Timing code
 
     // Bellman Ford algorithm loop
-    for (int i = 0; i < numVertices - 1; i++) {
+    for (int i = 0; i < numVertices; i++) {
         // Invoke kernel
+
+        for (int j = 0; j < numVertices; j++) {
+            std::cout << "dist_prev[" << j << "] = " << dist_prev[j] << std::endl;
+            std::cout << "dist_curr[" << j << "] = " << dist_curr[j] << std::endl;
+        }
         bellman_ford_outcore_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
 
@@ -247,30 +208,30 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
 
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
-            // std::cout << "Copied from device:" << std::endl;
-            // for (int i = 0; i < numVertices; i++) {
-            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            // }
+            std::cout << "Copied from device:" << std::endl;
+            for (int i = 0; i < numVertices; i++) {
+                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            }
 
-            // for (int i = 0; i < numVertices; i++) {
-            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            // }
+            for (int i = 0; i < numVertices; i++) {
+                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            }
 
-            // std::cin.get();
+            std::cin.get();
 
             // swap prev and curr
             memcpy(dist_prev, dist_curr, numVertices * sizeof(int));
 
-            // std::cout << "Swapped mem: " << std::endl;
-            // for (int i = 0; i < numVertices; i++) {
-            //     std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-            // }
+            std::cout << "Swapped mem: " << std::endl;
+            for (int i = 0; i < numVertices; i++) {
+                std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+            }
 
-            // for (int i = 0; i < numVertices; i++) {
-            //     std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-            // }
+            for (int i = 0; i < numVertices; i++) {
+                std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+            }
 
-            // std::cin.get();
+            std::cin.get();
 
             // copy updated mem to device
             cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
@@ -362,6 +323,8 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
             dist_curr[i] = SSSP_INF;
         }
     }
+
+
 
     switch (syncMethod) {
         case InCore:

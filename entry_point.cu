@@ -130,6 +130,12 @@ int main( int argc, char** argv )
 		std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
 
 
+		for (int i = 0; i < parsedGraph.size(); i++) {
+			std::cout << "L[" << i << "].u = " << parsedGraph[i].u << std::endl;
+			std::cout << "L[" << i << "].v = " << parsedGraph[i].v << std::endl;
+			std::cout << "L[" << i << "].w = " << parsedGraph[i].w << std::endl;
+		}
+
 		/********************************
 		 * Process the graph.
 		 ********************************/

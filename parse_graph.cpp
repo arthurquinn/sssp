@@ -70,6 +70,6 @@ uint parse_graph::parse(
         }
 	}
 
-	return num_vertices;
+	return num_vertices + 1;
 
 }
