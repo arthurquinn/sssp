@@ -19,27 +19,27 @@ __device__ void segment_scan(const int lane, const struct edge * L, const int * 
     if (lane >= 1 && L[threadIdx.x].v == L[threadIdx.x - 1].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 1].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 1].u] + L[threadIdx.x - 1].w;
-        dist_curr[threadIdx.x] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(me, other);
     } 
     if (lane >= 2 && L[threadIdx.x].v == L[threadIdx.x - 2].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 2].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 2].u] + L[threadIdx.x - 2].w;
-        dist_curr[threadIdx.x] = min(me, other);
+        dist_curr[L[threadIdx.x].v] = min(me, other);
     } 
     if (lane >= 4 && L[threadIdx.x].v == L[threadIdx.x - 4].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 4].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 4].u] + L[threadIdx.x - 4].w;
-        dist_curr[threadIdx.x] = min(me, other);        
+        dist_curr[L[threadIdx.x].v] = min(me, other);
     } 
     if (lane >= 8 && L[threadIdx.x].v == L[threadIdx.x - 8].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 8].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 8].u] + L[threadIdx.x - 8].w;
-        dist_curr[threadIdx.x] = min(me, other);        
+        dist_curr[L[threadIdx.x].v] = min(me, other);
     } 
     if (lane >= 16 && L[threadIdx.x].v == L[threadIdx.x - 16].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 16].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 16].u] + L[threadIdx.x - 16].w;
-        dist_curr[threadIdx.x] = min(me, other);        
+        dist_curr[L[threadIdx.x].v] = min(me, other);
     }
 }
 
@@ -97,17 +97,15 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
     int * shared_dist_curr = a + numVertices;
     struct edge * shared_L = (struct edge *)(a + 2 * numVertices); 
 
-    // Set up thread identifiers
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
-    int thread_num = blockDim.x * gridDim.x;
+    int thread_num = gridDim.x * blockDim.x;
     int warp_id = thread_id / WARP_NUM;
-    int lane_id = threadIdx.x % WARP_NUM;
+    int laneid = threadIdx.x % WARP_NUM;
 
-    // Determine thread load
     int load = numEdges % WARP_NUM == 0 ? numEdges / WARP_NUM : numEdges / WARP_NUM + 1;
     int beg = load * warp_id;
     int end = min(numEdges, beg + load);
-    beg = beg + lane_id;
+    beg = beg + laneid;
 
     // Load data into shared mem
     int vertex_load = numVertices % thread_num ? numVertices / thread_num + 1 : numVertices / thread_num;
@@ -133,14 +131,10 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
     }
     __syncthreads();
 
-    // Segment scan to find min and store in dist_curr
-    for (int i = beg; i < end; i += 32) {
-        if (threadIdx.x < numEdges){
-            segment_scan(lane_id, shared_L, shared_dist_prev, shared_dist_curr);
-            if (threadIdx.x == blockDim.x - 1 || shared_L[threadIdx.x].v != shared_L[threadIdx.x + 1].v) {
-                atomicMin(&dist_curr[shared_L[threadIdx.x].v], shared_dist_curr[shared_L[threadIdx.x].v]);
-            }
-        }
+    if (thread_id < numEdges) {
+        segment_scan(laneid, shared_L, shared_dist_prev, shared_dist_curr);
+
+
     }
 
     if (thread_id < numVertices) {
