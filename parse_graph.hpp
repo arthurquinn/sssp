@@ -1,16 +1,17 @@
 #ifndef PARSE_GRAPH_HPP
 #define PARSE_GRAPH_HPP
 
-#include <fstream>
 
-#include "initial_graph.hpp"
+#include <vector>
+#include <fstream>
+#include "graph.h"
 
 #define SSSP_INF 1073741824
 
 namespace parse_graph {
 	uint parse(
 		std::ifstream& inFile,
-		std::vector<initial_vertex>& initGraph,
+		std::vector<edge>& initGraph,
 		const long long arbparam,
 		const bool nondirected );
 }

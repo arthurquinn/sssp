@@ -121,13 +121,13 @@ int main( int argc, char** argv )
 		 ********************************/
 
 		std::cout << "Collecting the input graph ...\n";
-		std::vector<initial_vertex> parsedGraph( 0 );
-		uint nEdges = parse_graph::parse(
+		std::vector<edge> parsedGraph;
+		uint numVertices = parse_graph::parse(
 				inputFile,		// Input file.
 				parsedGraph,	// The parsed graph.
 				arbparam,
 				nonDirectedGraph );		// Arbitrary user-provided parameter.
-		std::cout << "Input graph collected with " << parsedGraph.size() << " vertices and " << nEdges << " edges.\n";
+		std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
 
 
 		/********************************
@@ -137,13 +137,13 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount, nEdges, syncMethod, smemMethod);
+		    puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod);
 		    break;
 		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount, nEdges);
+		    // neighborHandler(&parsedGraph, bsize, bcount, nEdges);
 		    break;
-		default:
-		    own(&parsedGraph, bsize, bcount);
+		// default:
+		    // own(&parsedGraph, bsize, bcount);
 		}
 
 		/********************************

@@ -4,11 +4,13 @@
 #include <stdio.h>
 #include <iostream>
 
+#include "graph.h"
 #include "parse_graph.hpp"
 
+// Parse the an input file into a vector of edges 
 uint parse_graph::parse(
 		std::ifstream& inFile,
-		std::vector<initial_vertex>& initGraph,
+		std::vector<edge>& edge_list,
 		const long long arbparam,
 		const bool nondirected ) {
 
@@ -22,13 +24,15 @@ uint parse_graph::parse(
 	unsigned int Additionalargc=0;
 	char* Additionalargv[ 61 ];
 
+    uint num_vertices=0;
+
 	// Read the input graph line-by-line.
 	while( std::getline( inFile, line ) ) {
 		if( line[0] < '0' || line[0] > '9' )	// Skipping any line blank or starting with a character rather than a number.
 			continue;
 		char cstrLine[256];
 		std::strcpy( cstrLine, line.c_str() );
-		uint firstIndex, secondIndex;
+		uint firstIndex, secondIndex, weight;
 
 		pch = strtok(cstrLine, delim);
 		if( pch != NULL )
@@ -40,64 +44,32 @@ uint parse_graph::parse(
 			secondIndex = atoi( pch );
 		else
 			continue;
+        pch = strtok(NULL, "\n");
+        if(pch != NULL){
+          weight = atoi(pch);
+        }
+        else{
+          weight = 1;
+        }
 
-		uint theMax = std::max( firstIndex, secondIndex );
-		uint srcVertexIndex = firstColumnSourceIndex ? firstIndex : secondIndex;
-		uint dstVertexIndex = firstColumnSourceIndex ? secondIndex : firstIndex;
-		if( initGraph.size() <= theMax )
-			initGraph.resize(theMax+1);
-		{ //This is just a block
-		        // Add the neighbor. A neighbor wraps edges
-			neighbor nbrToAdd;
-			nbrToAdd.srcIndex = srcVertexIndex;
+		uint temp_max = std::max( firstIndex, secondIndex );
+        num_vertices = std::max(temp_max, num_vertices);
+		uint src = firstColumnSourceIndex ? firstIndex : secondIndex;
+		uint dest = firstColumnSourceIndex ? secondIndex : firstIndex;
 
-			// std::cout << "Adding neighbor with srcIndex: " << srcVertexIndex << std::endl;
+        edge new_edge;
+        new_edge.u = src;
+        new_edge.v = dest;
+        new_edge.w = weight;
+        edge_list.push_back(new_edge);
 
-			Additionalargc=0;
-			Additionalargv[ Additionalargc ] = strtok( NULL, delim );
-			while( Additionalargv[ Additionalargc ] != NULL ){
-				Additionalargc++;
-				Additionalargv[ Additionalargc ] = strtok( NULL, delim );
-			}
-			initGraph.at(srcVertexIndex).vertexValue.distance = ( srcVertexIndex != arbparam ) ? SSSP_INF : 0;
-			initGraph.at(dstVertexIndex).vertexValue.distance = ( dstVertexIndex != arbparam ) ? SSSP_INF : 0;
-			nbrToAdd.edgeValue.weight = ( Additionalargc > 0 ) ? atoi(Additionalargv[0]) : 1;
-
-			initGraph.at(dstVertexIndex).nbrs.push_back( nbrToAdd );
-			nEdges++;
-		}
-		if( nondirected ) {
-		        // Add the edge going the other way
-			uint tmp = srcVertexIndex;
-			srcVertexIndex = dstVertexIndex;
-			dstVertexIndex = tmp;
-			//swap src and dest and add as before
-			
-			neighbor nbrToAdd;
-			nbrToAdd.srcIndex = srcVertexIndex;
-
-			Additionalargc=0;
-			Additionalargv[ Additionalargc ] = strtok( NULL, delim );
-			while( Additionalargv[ Additionalargc ] != NULL ){
-				Additionalargc++;
-				Additionalargv[ Additionalargc ] = strtok( NULL, delim );
-			}
-			initGraph.at(srcVertexIndex).vertexValue.distance = ( srcVertexIndex != arbparam ) ? SSSP_INF : 0;
-			initGraph.at(dstVertexIndex).vertexValue.distance = ( dstVertexIndex != arbparam ) ? SSSP_INF : 0;
-			nbrToAdd.edgeValue.weight = ( Additionalargc > 0 ) ? atoi(Additionalargv[0]) : 1;
-			initGraph.at(dstVertexIndex).nbrs.push_back( nbrToAdd );
-			nEdges++;
-		}
-
-
-
-		// std::cout << "Number of neighbors for vertex " << srcVertexIndex << ": " << initGraph.at(srcVertexIndex).nbrs.size() << std::endl;
-		// std::cin.get();
+        if(nondirected){
+           new_edge.u = dest;
+           new_edge.v = src;
+           new_edge.w = weight;
+        }
 	}
 
-
-	// std::cout << "First vertex has " << initGraph.at(0).nbrs.size() << " edges" << std::endl;
-
-	return nEdges;
+	return num_vertices;
 
 }
