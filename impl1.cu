@@ -16,6 +16,11 @@ __device__ void segment_scan(const int lane, const struct edge * L, const int * 
     int me;
     int other;
 
+    printf("seg: %d | lane: %d\n", threadIdx.x, lane);
+    printf("L[%d].u = %d\n", threadIdx.x, L[threadIdx.x].u);
+    printf("L[%d].v = %d\n", threadIdx.x, L[threadIdx.x].v);
+    printf("L[%d].w = %d\n", threadIdx.x, L[threadIdx.x].w);
+
     if (lane >= 1 && L[threadIdx.x].v == L[threadIdx.x - 1].v) {
         me = dist_prev[L[threadIdx.x].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x].u] + L[threadIdx.x].w;
         other = dist_prev[L[threadIdx.x - 1].u] == SSSP_INF ? SSSP_INF : dist_prev[L[threadIdx.x - 1].u] + L[threadIdx.x - 1].w;
@@ -97,7 +102,30 @@ __global__ void bellman_ford_segment_scan_kernel(const struct edge * L, const in
     int * shared_dist_curr = a + numVertices;
     struct edge * shared_L = (struct edge *)(a + 2 * numVertices); 
 
-    
+
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int thread_num = blockDim.x * gridDim.x;
+    int iter = numEdges % thread_num ? numEdges / thread_num + 1 : numEdges / thread_num;
+    // int warp_iter = blockDim.x / WARP_NUM ? blockDim.x / WARP_NUM + 1 : blockDim.x / WARP_NUM;
+
+    for (int i = 0; i < iter; i++)
+    {
+        // Assign data into shared memory arrays
+        int dataid = thread_id + i * thread_num;
+        if (dataid < numEdges)
+        {
+            shared_L[threadIdx.x] = L[dataid];
+            shared_dist_prev[L[dataid].u] = dist_prev[shared_L[threadIdx.x].u];
+            shared_dist_curr[L[dataid].u] = dist_curr[shared_L[threadIdx.x].u];
+            __syncthreads();
+
+            int lane = threadIdx.x % WARP_NUM;
+            segment_scan(lane, shared_L, shared_dist_prev, shared_dist_curr);
+
+            __syncthreads();
+            printf("shared_dist_curr[%d] = %d\n", shared_L[threadIdx.x].u, shared_dist_curr[shared_L[threadIdx.x].u]);
+        }
+    }
 }
 
 bool arrays_different(const int n, const int * arr1, const int * arr2) {
