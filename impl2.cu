@@ -55,7 +55,6 @@ __global__ void get_offset(
     const int numWarps) {
 
     extern __shared__ int a[];
-
     int tid = threadIdx.x;
 
     if (tid == 0)
@@ -96,8 +95,7 @@ __global__ void copy_tpe(
         int dataid = thread_id + i * num_threads;
         if (dataid < numEdges) {
             int adj_warp_id = warp_id + i * num_warps;
-
-            int bal = __ballot(changed_mask[dataid] == 1);
+            int bal = __ballot(changed_mask[L[dataid].u] == 1);
             int localid = __popc(bal<<(32-lane));
             T[localid+adj_warp_id] = L[dataid];
         }
@@ -227,9 +225,15 @@ void work_efficient_out_core(
         std::cout << "numtpe: " << *num_tpe << std::endl;
         std::cin.get();
 
-        get_offset<<<1, warpsNeeded>>>(d_X, d_Y, warpsNeeded);
+        if (*num_tpe == 0) {
+            std::cout << "I'm done here" << std::endl;
+            break;
+        }
+
+        get_offset<<<1, warpsNeeded, warpsNeeded * sizeof(int)>>>(d_X, d_Y, warpsNeeded);
         cudaDeviceSynchronize();
 
+        std::cout << "Calling copy tpe" << std::endl;
         copy_tpe<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_T, numEdges);
         cudaDeviceSynchronize();
 
@@ -237,6 +241,12 @@ void work_efficient_out_core(
         for (int i = 0; i < *num_tpe; i++) {
             std::cout << "Edge: [" << T[i].u << ", " << T[i].v << "]" << std::endl;
         }
+
+        // Reset mask
+        for (int i = 0; i < numVertices; i++) {
+            changed_mask[i] = 0;
+        }
+        cudaMemcpy(d_changed_mask, changed_mask, numVertices * sizeof(int), cudaMemcpyHostToDevice);
     }
 }
 
