@@ -12,17 +12,17 @@
 
 #define WARP_NUM 32
 
-__global__ void neighborHandling_kernel() {
-
-}
-
 // Determines the number of to process edges in each warp
 // changed_mask is a mask of all edges marked as changed in L, (0 = unchanged, 1 = changed)
 // X is an array where X[warpid] denotes the number of edges to process in each warp
 __global__ void count_edges(
+    const struct edge * L,
     const int * changed_mask,
     int * X,
+    int * num_tpe,
     const int numEdges) {
+
+    *num_tpe = 0;
 
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int num_threads = blockDim.x * gridDim.x;
@@ -37,8 +37,11 @@ __global__ void count_edges(
         if (dataid < numEdges) {
             int adj_warp_id = warp_id + i * num_warps;
 
-            if (changed_mask[dataid] == 1)
+            if (changed_mask[L[dataid].u] == 1) {
+                printf("counting edge [%d, %d]\n", L[dataid].u, L[dataid].v);
                 atomicAdd(&X[adj_warp_id], 1);
+                atomicAdd(num_tpe, 1);
+            }
         }
     }
 }
@@ -68,105 +71,173 @@ __global__ void get_offset(
             a[tid] = newval;
         }
     }
-
     Y[tid] = a[tid];
+}
+
+// step 3 of filtering process
+// Copies all tpe (to-process edges) into the array T based on their offset
+// L is edge list, changed_mask shows which edges are tpe, T will be the filtered array of edges
+__global__ void copy_tpe(
+    const struct edge * L,
+    const int * changed_mask,
+    struct edge * T,
+    const int numEdges) {
+
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int num_threads = blockDim.x * gridDim.x;
+
+    int warp_id = thread_id / WARP_NUM;
+    int num_warps = num_threads % WARP_NUM ? num_threads / WARP_NUM + 1 : num_threads / WARP_NUM;
+    int lane = thread_id % WARP_NUM;
+
+    int iter = numEdges % num_threads ? numEdges / num_threads + 1 : numEdges / num_threads;
+
+    for (int i = 0; i < iter; i++) {
+        int dataid = thread_id + i * num_threads;
+        if (dataid < numEdges) {
+            int adj_warp_id = warp_id + i * num_warps;
+
+            int bal = __ballot(changed_mask[dataid] == 1);
+            int localid = __popc(bal<<(32-lane));
+            T[localid+adj_warp_id] = L[dataid];
+        }
+    }
+
+}
+
+__global__ void bmf_tpe_outcore_kernel(
+    const struct edge * T,
+    const int num_tpe,
+    const int * dist_prev,
+    int * dist_curr,
+    int * changed_mask) {
+
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int warp_id = thread_id / WARP_NUM;
+    int laneid = threadIdx.x % WARP_NUM;
+
+    int load = num_tpe % WARP_NUM == 0 ? num_tpe / WARP_NUM : num_tpe / WARP_NUM + 1;
+    int beg = load * warp_id;
+    int end = min(num_tpe, beg + load);
+    beg = beg + laneid;
+
+    for (int i = beg; i < end; i += 32) {
+        int u = T[i].u;
+        int v = T[i].v;
+        int w = T[i].w;
+
+        int newDist = dist_prev[u] == SSSP_INF ? SSSP_INF : dist_prev[u] + w;
+        if (newDist < dist_prev[v]) {
+            changed_mask[v] = 1;
+            atomicMin(&dist_curr[v], newDist);
+        }
+    }
+
+}
+
+int arrays_different(const int * arr1, const int * arr2, const int n) {
+    int numdiff = 0;
+    for (int i = 0; i < n; i++) {
+        if (arr1[i] != arr2[i]) {
+            numdiff++;
+        }
+    }
+    return numdiff;
 }
 
 void work_efficient_out_core(
     const struct edge * L, 
-    const int * dist_prev, 
+    int * dist_prev, 
     int * dist_curr, 
     const int numVertices, 
     int numEdges, 
     const int blockSize, 
     const int blockNum) {
 
-    numEdges = 100;
+    // T will store tpe
+    struct edge * T = (struct edge *)malloc(sizeof(struct edge) * numEdges);
 
-    // Create mask array
-    int * mask = (int *)calloc(numEdges, sizeof(int));
+    // changed_mask will store a mask containing a 1 flag for each change in the dist_curr arr
+    int * changed_mask = (int *)calloc(numVertices, sizeof(int));
 
-    mask[0] = 1;
-    mask[12] = 1;
-    mask[13] = 1;
-    mask[31] = 1;
+    // Start out T with all edges
+    for (int i = 0; i < numEdges; i++) {
+        T[i] = L[i];
+    }
 
-    mask[60] = 1;
-    mask[61] = 1;
+    int warpsNeeded = numEdges % WARP_NUM ? numEdges / WARP_NUM + 1 : numEdges / WARP_NUM;
+    int * X = (int *)calloc(warpsNeeded, sizeof(int));
+    int * Y = (int *)calloc(warpsNeeded, sizeof(int));
 
-    mask[80] = 1;
+    int * num_tpe = (int *)malloc(sizeof(int));
+    *num_tpe = numEdges;
 
-    mask[99] = 1;
-    mask[98] = 1;
-
-    // Create sum array
-
-    std::cout << "Num Edges: " << numEdges << std::endl;
-    std::cout << "Warp Num: " << WARP_NUM << std::endl;
-    std::cout << "Num Edges mod Warp Num: " << numEdges % WARP_NUM << std::endl;
-
-    int warps = numEdges % WARP_NUM ? numEdges / WARP_NUM + 1 : numEdges / WARP_NUM;
-    int * X = (int *)calloc(warps, sizeof(int));
-
-    // for (int i = 0; i < warps; i++) {
-    //     std::cout << "X[" << i << "] = " << X[i] << std::endl;
-    //     std::cin.get();
-    // }
-
-    int * Y = (int *)calloc(warps, sizeof(int));
-
-    // Allocate mem on device
+    // Allocate memory on device
     struct edge * d_L;
+    struct edge * d_T;
     int * d_dist_prev;
     int * d_dist_curr;
-    int * d_mask;
+    int * d_changed_mask;
     int * d_X;
     int * d_Y;
+    int * d_num_tpe;
     cudaMalloc((void **)&d_L, numEdges * sizeof(struct edge));
+    cudaMalloc((void **)&d_T, numEdges * sizeof(struct edge));
     cudaMalloc((void **)&d_dist_prev, numVertices * sizeof(int));
     cudaMalloc((void **)&d_dist_curr, numVertices * sizeof(int));
-    cudaMalloc((void **)&d_mask, numEdges * sizeof(int));
-    cudaMalloc((void **)&d_X, warps * sizeof(int));
-    cudaMalloc((void **)&d_Y, warps * sizeof(int));
+    cudaMalloc((void **)&d_changed_mask, numVertices * sizeof(int));
+    cudaMalloc((void **)&d_X, warpsNeeded * sizeof(int));
+    cudaMalloc((void **)&d_Y, warpsNeeded * sizeof(int));
+    cudaMalloc((void **)&d_num_tpe, sizeof(int));
     cudaMemcpy(d_L, L, numEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_T, T, numEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
     cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_mask, mask, numEdges * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_X, X, warps * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_Y, Y, warps * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_changed_mask, changed_mask, numVertices * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_X, X, warpsNeeded * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_Y, Y, warpsNeeded * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
 
-    // test step 1
-    count_edges<<<blockNum, blockSize>>>(d_mask, d_X, numEdges);
+    for (int i = 0; i < numVertices - 1; i++) {
+        bmf_tpe_outcore_kernel<<<blockNum, blockSize>>>(d_T, *num_tpe, d_dist_prev, d_dist_curr, d_changed_mask);
+        cudaDeviceSynchronize();
 
-    cudaMemcpy(X, d_X, warps * sizeof(int), cudaMemcpyDeviceToHost);
+        // Swap dist curr into dist prev
+        cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
 
-    std::cout << "Warps: " << warps << std::endl;
+        std::cout << "Copied from device:" << std::endl;
+        for (int i = 0; i < numVertices; i++) {
+            std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
+        }
 
-    for (int i = 0; i < warps; i++) {
-        std::cout << "X[" << i << "] = " << X[i] << std::endl;
+        for (int i = 0; i < numVertices; i++) {
+            std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
+        }
+
         std::cin.get();
-    }
 
-    std::cout << "Computing prefix sum..." << std::endl;
+        memcpy(dist_prev, dist_curr, numVertices * sizeof(int));
+        cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
-    // test step 2
-    get_offset<<<1, warps, warps * sizeof(int)>>>(d_X, d_Y, warps);
+        count_edges<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_X, d_num_tpe, numEdges);
+        cudaDeviceSynchronize();
 
-    cudaMemcpy(Y, d_Y, warps * sizeof(int), cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < warps; i++) {
-        std::cout << "Y[" << i << "] = " << Y[i] << std::endl;
+        cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
+        std::cout << "numtpe: " << *num_tpe << std::endl;
         std::cin.get();
+
+        get_offset<<<1, warpsNeeded>>>(d_X, d_Y, warpsNeeded);
+        cudaDeviceSynchronize();
+
+        copy_tpe<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_T, numEdges);
+        cudaDeviceSynchronize();
+
+        cudaMemcpy(T, d_T, *num_tpe * sizeof(struct edge), cudaMemcpyDeviceToHost);
+        for (int i = 0; i < *num_tpe; i++) {
+            std::cout << "Edge: [" << T[i].u << ", " << T[i].v << "]" << std::endl;
+        }
     }
-
-    
-
-    // Bellman Ford Algorithm Loop
-    // for (int i = 0; i < numVertices - 1; i++) {
-
-    // }
-
-
 }
 
 void work_efficient_in_core() {
