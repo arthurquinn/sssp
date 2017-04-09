@@ -22,8 +22,6 @@ __global__ void count_edges(
     int * num_tpe,
     const int numEdges) {
 
-    *num_tpe = 0;
-
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int num_threads = blockDim.x * gridDim.x;
 
@@ -38,7 +36,6 @@ __global__ void count_edges(
             int adj_warp_id = warp_id + i * num_warps;
 
             if (changed_mask[L[dataid].u] == 1) {
-                printf("counting edge [%d, %d]\n", L[dataid].u, L[dataid].v);
                 atomicAdd(&X[adj_warp_id], 1);
                 atomicAdd(num_tpe, 1);
             }
@@ -133,16 +130,6 @@ __global__ void bmf_tpe_outcore_kernel(
 
 }
 
-int arrays_different(const int * arr1, const int * arr2, const int n) {
-    int numdiff = 0;
-    for (int i = 0; i < n; i++) {
-        if (arr1[i] != arr2[i]) {
-            numdiff++;
-        }
-    }
-    return numdiff;
-}
-
 void work_efficient_out_core(
     const struct edge * L, 
     int * dist_prev, 
@@ -164,6 +151,7 @@ void work_efficient_out_core(
     }
 
     int warpsNeeded = numEdges % WARP_NUM ? numEdges / WARP_NUM + 1 : numEdges / WARP_NUM;
+    warpsNeeded = min(64, warpsNeeded);
     int * X = (int *)calloc(warpsNeeded, sizeof(int));
     int * Y = (int *)calloc(warpsNeeded, sizeof(int));
 
@@ -204,49 +192,51 @@ void work_efficient_out_core(
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
 
-        std::cout << "Copied from device:" << std::endl;
-        for (int i = 0; i < numVertices; i++) {
-            std::cout << "dist_prev[" << i << "] = " << dist_prev[i] << std::endl;
-        }
+        // std::cout << "Copied from device:" << std::endl;
+        // for (int j = 0; j < 20; j++) {
+        //     std::cout << "dist_prev[" << j << "] = " << dist_prev[j] << std::endl;
+        // }
 
-        for (int i = 0; i < numVertices; i++) {
-            std::cout << "dist_curr[" << i << "] = " << dist_curr[i] << std::endl;
-        }
+        // for (int j = 0; j < 20; j++) {
+        //     std::cout << "dist_curr[" << j << "] = " << dist_curr[j] << std::endl;
+        // }
 
-        std::cin.get();
+        // std::cin.get();
 
         memcpy(dist_prev, dist_curr, numVertices * sizeof(int));
         cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
+        *num_tpe = 0;
+        cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
         count_edges<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_X, d_num_tpe, numEdges);
         cudaDeviceSynchronize();
 
         cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
         std::cout << "numtpe: " << *num_tpe << std::endl;
-        std::cin.get();
+        // std::cin.get();
 
         if (*num_tpe == 0) {
-            std::cout << "I'm done here" << std::endl;
+            std::cout << "I'm done here after " << i << " iterations" << std::endl;
             break;
         }
 
         get_offset<<<1, warpsNeeded, warpsNeeded * sizeof(int)>>>(d_X, d_Y, warpsNeeded);
         cudaDeviceSynchronize();
 
-        std::cout << "Calling copy tpe" << std::endl;
         copy_tpe<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_T, numEdges);
         cudaDeviceSynchronize();
 
         cudaMemcpy(T, d_T, *num_tpe * sizeof(struct edge), cudaMemcpyDeviceToHost);
-        for (int i = 0; i < *num_tpe; i++) {
-            std::cout << "Edge: [" << T[i].u << ", " << T[i].v << "]" << std::endl;
-        }
+        // for (int i = 0; i < *num_tpe; i++) {
+        //     std::cout << "Edge: [" << T[i].u << ", " << T[i].v << "]" << std::endl;
+        // }
 
         // Reset mask
-        for (int i = 0; i < numVertices; i++) {
-            changed_mask[i] = 0;
+        for (int j = 0; j < numVertices; j++) {
+            changed_mask[j] = 0;
         }
         cudaMemcpy(d_changed_mask, changed_mask, numVertices * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_T, T, *num_tpe * sizeof(struct edge), cudaMemcpyHostToDevice);
     }
 }
 
