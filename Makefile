@@ -8,4 +8,4 @@ clean:
 	rm -f *.o sssp
 
 test: 
-	./sssp --input sortedin.txt --bsize 512 --bcount 192 --output output.txt --method bmf --usesmem yes --sync outcore
+	./sssp --input Amazon0312.txt --bsize 512 --bcount 192 --output output.txt --method tpe --usesmem yes --sync outcore

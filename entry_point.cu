@@ -129,13 +129,6 @@ int main( int argc, char** argv )
 				nonDirectedGraph );		// Arbitrary user-provided parameter.
 		std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
 
-
-		for (int i = 0; i < parsedGraph.size(); i++) {
-			std::cout << "L[" << i << "].u = " << parsedGraph[i].u << std::endl;
-			std::cout << "L[" << i << "].v = " << parsedGraph[i].v << std::endl;
-			std::cout << "L[" << i << "].w = " << parsedGraph[i].w << std::endl;
-		}
-
 		/********************************
 		 * Process the graph.
 		 ********************************/
@@ -146,7 +139,7 @@ int main( int argc, char** argv )
 		    puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod);
 		    break;
 		case ProcessingType::Neighbor:
-		    // neighborHandler(&parsedGraph, bsize, bcount, nEdges);
+		    neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod);
 		    break;
 		// default:
 		    // own(&parsedGraph, bsize, bcount);
