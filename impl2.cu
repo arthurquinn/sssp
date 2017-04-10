@@ -321,20 +321,13 @@ void work_efficient_in_core(
         bmf_tpe_incore_kernel<<<blockNum, blockSize>>>(d_T, *num_tpe, d_dist, d_changed_mask);
         cudaDeviceSynchronize();
 
-        std::cout << "Copied from device:" << std::endl;
-        for (int j = 0; j < 20; j++) {
-            std::cout << "dist[" << j << "] = " << dist[j] << std::endl;
-        }
-
-        std::cin.get();
-
         *num_tpe = 0;
         cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
         count_edges<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_X, d_num_tpe, numEdges);
         cudaDeviceSynchronize();
 
         cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
-        std::cout << "numtpe: " << *num_tpe << std::endl;
+        // std::cout << "numtpe: " << *num_tpe << std::endl;
         // std::cin.get();
 
         if (*num_tpe == 0) {
