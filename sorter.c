@@ -133,6 +133,10 @@ int main (int argc, char* argv [])
 	}
 
 	fclose(fp2);
+	free(source);
+	free(dest);
+	free(weight);
+	free(words)
 	printf("Done!\n");
 	
 	return 0;
