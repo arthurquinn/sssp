@@ -8,6 +8,9 @@
 #include "parse_graph.hpp"
 #include "enumerations.hpp"
 #include "graph.h"
+#include "stdio.h"
+#include <stdlib.h>
+#include <string.h>
 
 #define WARP_NUM 32
 
@@ -146,16 +149,19 @@ void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dis
     cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
     // Timing Code
-
+	double b = 0;
     // Bellman ford algorithm loop
     for (int i = 0; i < numVertices - 1; i++) {
         int smem_size = numEdges * sizeof(struct edge) + 2 * numVertices * sizeof(int);
+		setTime();
         bellman_ford_segment_scan_kernel<<<blockNum, blockSize, smem_size>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
 
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-
+		
+		b = b + getTime();
+		
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
 
@@ -174,6 +180,7 @@ void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dis
 
     // After all iterations get final result
     cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "Took " << b << "ms.\n";
 }
 
 // After algorithm is complete, dist_curr will contain shortest path to all vertices
@@ -190,16 +197,19 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
     cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
     // Timing code
-
+	double b = 0;
     // Bellman Ford algorithm loop
     for (int i = 0; i < numVertices; i++) {
         // Invoke kernel
+		setTime();
         bellman_ford_outcore_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
 
         // Copy results from device
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+		
+		b = b + getTime();
 
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
@@ -217,6 +227,7 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
 
     // After all iterations get final result
     cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "Took " << b << "ms.\n";
 }
 
 void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
@@ -233,13 +244,16 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
     // Timing Code
 
     // Bellman ford algorithm loop
+	//setTime();
+	double b = 0;
     int * anyChange = (int *)malloc(sizeof(int));
     for (int i = 0; i < numVertices - 1; i++) {
 
         // Invoke kernel
+		setTime();
         bellman_ford_incore_kernel<<<blockNum, blockSize>>>(d_L, d_dist, numEdges, numVertices, d_anyChange);
         cudaDeviceSynchronize();
-
+		b = b + getTime();
         // Check if any value was changed
         cudaMemcpy(anyChange, d_anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 
@@ -251,15 +265,17 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
             std::cout << "Completed after " << i << " iterations" << std::endl;
             break;
         }
+		 //std::cout << "Took " << getTime() << "ms.\n";
     }
-
+	
     // dist will store results of algorithm
     cudaMemcpy(dist, d_dist, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "Took " << b << "ms.\n";
 }
 
 
-void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVertices, enum SyncMode syncMethod, enum SmemMode smemMode) {
-    setTime();
+void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVertices, enum SyncMode syncMethod, enum SmemMode smemMode, std::ofstream& outputFile) {
+    
 
     // Create edge list array
     int numEdges = peeps->size();
@@ -294,7 +310,6 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
     }
 
 
-
     switch (syncMethod) {
         case InCore:
             std::cout << "Starting incore" << std::endl;
@@ -316,6 +331,14 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
             std::cout << "Invalid core processing method" << std::endl;
             break;
     }
+	
+	int c;
+	for ( c = 0 ; c < numVertices ; c++ )
+	{	
+		outputFile << c <<":"<< dist_curr[c] << "\n";		
+	}
+
+	outputFile.close();
 
     // std::cout << "Took " << getTime() << "ms.\n";
 }

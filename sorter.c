@@ -52,10 +52,10 @@
 	}
 	 
  }
- 
- // ex:- ./sorter input.txt weighted output.txt dest
+ // gcc sorter.c -o sorter
+ // ex:- ./sorter input.txt weighted inputDest.txt dest
  // or
- // ./sorter input2.txt unweighted output2.txt source 
+ // ./sorter input2.txt unweighted inputSource.txt source 
  
 int main (int argc, char* argv [])
 {

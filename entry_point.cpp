@@ -9,11 +9,16 @@
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
-#include "enumerations.hpp"
 
 #include "opt.cu"
 #include "impl2.cu"
-#include "impl1.cu" 
+#include "impl1.cu"
+
+enum class ProcessingType {Push, Neighbor, Own, Unknown};
+enum SyncMode {InCore, OutOfCore};
+enum SyncMode syncMethod;
+enum SmemMode {UseSmem, UseNoSmem};
+enum SmemMode smemMethod;
 
 // Open files safely.
 template <typename T_file>
@@ -44,8 +49,8 @@ int main( int argc, char** argv )
 		std::ofstream outputFile;
 		int selectedDevice = 0;
 		int bsize = 0, bcount = 0;
-		//int vwsize = 32;
-		//int threads = 1;
+		int vwsize = 32;
+		int threads = 1;
 		long long arbparam = 0;
 		bool nonDirectedGraph = false;		// By default, the graph is directed.
 		ProcessingType processingMethod = ProcessingType::Unknown;
@@ -65,32 +70,30 @@ int main( int argc, char** argv )
 				else if ( !strcmp(argv[iii+1], "opt") )
 				    processingMethod = ProcessingType::Own;
 				else{
-		           std::cerr << "\n Un-recognized method parameter value \n\n";
-		           return 0;
-         		}   
+           std::cerr << "\n Un-recognized method parameter value \n\n";
+           exit;
+         }   
 			}
 			else if ( !strcmp(argv[iii], "--sync") && iii != argc-1 ) {
 				if ( !strcmp(argv[iii+1], "incore") )
 				        syncMethod = InCore;
-				else if ( !strcmp(argv[iii+1], "outcore") )
+				if ( !strcmp(argv[iii+1], "outcore") )
     				        syncMethod = OutOfCore;
-				else {
-		           std::cerr << "\n Un-recognized sync parameter value \n\n";
-		           return 0;
-         		}  
+				else{
+           std::cerr << "\n Un-recognized sync parameter value \n\n";
+           exit;
+         }  
 
 			}
 			else if ( !strcmp(argv[iii], "--usesmem") && iii != argc-1 ) {
-				if ( !strcmp(argv[iii+1], "yes") ) {
-				    smemMethod = UseSmem;
-				}
-				else if ( !strcmp(argv[iii+1], "no") ) {
-					smemMethod = UseNoSmem;
-				}        
-        		else {
-		           std::cerr << "\n Un-recognized usesmem parameter value \n\n";
-		           return 0;
-         		}  
+				if ( !strcmp(argv[iii+1], "yes") )
+				        smemMethod = UseSmem;
+				if ( !strcmp(argv[iii+1], "no") )
+    				        smemMethod = UseNoSmem;
+        else{
+           std::cerr << "\n Un-recognized usesmem parameter value \n\n";
+           exit;
+         }  
 			}
 			else if( !strcmp( argv[iii], "--input" ) && iii != argc-1 /*is not the last one*/)
 				openFileToAccess< std::ifstream >( inputFile, std::string( argv[iii+1] ) );
@@ -103,7 +106,7 @@ int main( int argc, char** argv )
 
 		if(bsize <= 0 || bcount <= 0){
 			std::cerr << "Usage: " << usage;
-      		//exit;
+      exit;
 			throw std::runtime_error("\nAn initialization error happened.\nExiting.");
 		}
 		if( !inputFile.is_open() || processingMethod == ProcessingType::Unknown ) {
@@ -121,13 +124,14 @@ int main( int argc, char** argv )
 		 ********************************/
 
 		std::cout << "Collecting the input graph ...\n";
-		std::vector<edge> parsedGraph;
-		uint numVertices = parse_graph::parse(
+		std::vector<initial_vertex> parsedGraph( 0 );
+		uint nEdges = parse_graph::parse(
 				inputFile,		// Input file.
 				parsedGraph,	// The parsed graph.
 				arbparam,
 				nonDirectedGraph );		// Arbitrary user-provided parameter.
-		std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
+		std::cout << "Input graph collected with " << parsedGraph.size() << " vertices and " << nEdges << " edges.\n";
+
 
 		/********************************
 		 * Process the graph.
@@ -136,16 +140,14 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod, outputFile);
+		    puller(&parsedGraph, bsize, bcount);
 		    break;
 		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod);
+		    neighborHandler(&parsedGraph, bsize, bcount);
 		    break;
-		// default:
-		    // own(&parsedGraph, bsize, bcount);
+		default:
+		    own(&parsedGraph, bsize, bcount);
 		}
-		
-		
 
 		/********************************
 		 * It's done here.
