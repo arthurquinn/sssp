@@ -360,7 +360,8 @@ void neighborHandler(
     const int blockSize, 
     const int blockNum, 
     const int numVertices, 
-    const enum SyncMode syncMethod) {
+    const enum SyncMode syncMethod,
+    std::ofstream& outputFile) {
 
 
     setTime();
@@ -400,6 +401,14 @@ void neighborHandler(
         default:
             std::cout << "Invalid processing method" << std::endl;
     }
+
+    int c;
+    for ( c = 0 ; c < numVertices ; c++ )
+    {   
+        outputFile << c <<":"<< dist_curr[c] << "\n";       
+    }
+
+    outputFile.close();
 
 
     std::cout << "Took " << getTime() << "ms.\n";

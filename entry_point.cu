@@ -139,7 +139,7 @@ int main( int argc, char** argv )
 		    puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod, outputFile);
 		    break;
 		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod);
+		    neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod, outputFile);
 		    break;
 		// default:
 		    // own(&parsedGraph, bsize, bcount);
