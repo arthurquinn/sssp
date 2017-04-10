@@ -7,8 +7,8 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 #include "enumerations.hpp"
-#include "graph.h"
 #include "stdio.h"
+#include "user_specified_structures.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -136,7 +136,7 @@ bool arrays_different(const int n, const int * arr1, const int * arr2) {
     return false;
 }
 
-void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
+double bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
     // Copy host mem to device
     struct edge * d_L;
     int * d_dist_prev;
@@ -149,18 +149,18 @@ void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dis
     cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
     // Timing Code
-    double b = 0;
+    double b = 0.0;
     // Bellman ford algorithm loop
     for (int i = 0; i < numVertices - 1; i++) {
         int smem_size = numEdges * sizeof(struct edge) + 2 * numVertices * sizeof(int);
         setTime();
         bellman_ford_segment_scan_kernel<<<blockNum, blockSize, smem_size>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
+        b = b + getTime();
 
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-        
-        b = b + getTime();
+    
         
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
@@ -173,18 +173,20 @@ void bellman_ford_segment_scan(const struct edge * L, int * dist_prev, int * dis
             cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
             cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
         } else {
-            std::cout << "Completed after " << i << " iterations" << std::endl;
+            // std::cout << "Completed after " << i << " iterations" << std::endl;
             break;
         }
     }
 
     // After all iterations get final result
     cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-    std::cout << "Took " << b << "ms.\n";
+    //std::cout << "Took " << b << "ms.\n";
+
+    return b;
 }
 
 // After algorithm is complete, dist_curr will contain shortest path to all vertices
-void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
+double bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_curr, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
     // Copy host mem to device mem
     struct edge * d_L;
     int * d_dist_prev;
@@ -197,19 +199,18 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
     cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
     // Timing code
-    double b = 0;
+    double b = 0.0;
     // Bellman Ford algorithm loop
     for (int i = 0; i < numVertices; i++) {
         // Invoke kernel
         setTime();
         bellman_ford_outcore_kernel<<<blockNum, blockSize>>>(d_L, d_dist_prev, d_dist_curr, numEdges, numVertices);
         cudaDeviceSynchronize();
+        b = b + getTime();
 
         // Copy results from device
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-        
-        b = b + getTime();
 
         if (arrays_different(numVertices, dist_prev, dist_curr)) {
 
@@ -220,17 +221,19 @@ void bellman_ford_outcore(const struct edge * L, int * dist_prev, int * dist_cur
             cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
             cudaMemcpy(d_dist_curr, dist_curr, numVertices * sizeof(int), cudaMemcpyHostToDevice);
         } else {
-            std::cout << "Completed after " << i << " iterations" << std::endl;
+            // std::cout << "Completed after " << i << " iterations" << std::endl;
             break;
         }
     }
 
     // After all iterations get final result
     cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-    std::cout << "Took " << b << "ms.\n";
+    // std::cout << "Took " << b << "ms.\n";
+
+    return b;
 }
 
-void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
+double bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, const int numVertices, const int blockNum, const int blockSize) {
     // Copy host mem to device
     struct edge * d_L;
     int * d_dist;
@@ -241,11 +244,8 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
     cudaMemcpy(d_L, L, numEdges * sizeof(struct edge), cudaMemcpyHostToDevice);
     cudaMemcpy(d_dist, dist, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Timing Code
-
     // Bellman ford algorithm loop
-    //setTime();
-    double b = 0;
+    double b = 0.0;
     int * anyChange = (int *)malloc(sizeof(int));
     for (int i = 0; i < numVertices - 1; i++) {
 
@@ -262,7 +262,7 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
             *anyChange = 0;
             cudaMemcpy(d_anyChange, anyChange, sizeof(int), cudaMemcpyHostToDevice);
         } else {
-            std::cout << "Completed after " << i << " iterations" << std::endl;
+            // std::cout << "Completed after " << i << " iterations" << std::endl;
             break;
         }
          //std::cout << "Took " << getTime() << "ms.\n";
@@ -270,11 +270,13 @@ void bellman_ford_incore(const struct edge * L, int * dist, const int numEdges, 
     
     // dist will store results of algorithm
     cudaMemcpy(dist, d_dist, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-    std::cout << "Took " << b << "ms.\n";
+    // std::cout << "Took " << b << "ms.\n";
+
+    return b;
 }
 
 
-void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVertices, enum SyncMode syncMethod, enum SmemMode smemMode, std::ofstream& outputFile) {
+struct time_result puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVertices, enum SyncMode syncMethod, enum SmemMode smemMode, std::ofstream& outputFile) {
     
 
     // Create edge list array
@@ -288,12 +290,6 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
         L[edge_num].w = itr->w;
         edge_num++;
     }
-
-    // for (int i = 0; i < numEdges; i++) {
-    //     std::cout << "L[" << i << "].u = " << L[i].u << std::endl;
-    //     std::cout << "L[" << i << "].v = " << L[i].v << std::endl;
-    //     std::cout << "L[" << i << "].w = " << L[i].w << std::endl;
-    // }
 
     // Allocate space for dist_prev and dist_curr
     int * dist_prev = (int *)malloc(numVertices * sizeof(int));
@@ -309,20 +305,20 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
         }
     }
 
-
+    double time = 0.0f;
     switch (syncMethod) {
         case InCore:
             std::cout << "Starting incore" << std::endl;
-            bellman_ford_incore(L, dist_curr, numEdges, numVertices, blockNum, blockSize);
+            time = bellman_ford_incore(L, dist_curr, numEdges, numVertices, blockNum, blockSize);
             break;
         case OutOfCore:
             if (smemMode == UseNoSmem) {
                 std::cout << "Starting outcore" << std::endl;
-                bellman_ford_outcore(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
+                time = bellman_ford_outcore(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
             }
             else if (smemMode == UseSmem) {
                 std::cout << "Starting segment scan" << std::endl;
-                bellman_ford_segment_scan(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
+                time = bellman_ford_segment_scan(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
             } else {
                 std::cout << "Invalid shared memory specification" << std::endl;
             }
@@ -340,5 +336,10 @@ void puller(std::vector<edge> * peeps, int blockSize, int blockNum, int numVerti
 
     outputFile.close();
 
-    // std::cout << "Took " << getTime() << "ms.\n";
+    struct time_result ret_time;
+
+    ret_time.comp_time = time;
+    ret_time.filter_time = 0.0;
+
+    return ret_time;
 }

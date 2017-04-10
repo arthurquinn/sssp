@@ -4,14 +4,14 @@
 
 #include <vector>
 #include <fstream>
-#include "graph.h"
+#include "user_specified_structures.h"
 
 #define SSSP_INF 1073741824
 
 namespace parse_graph {
 	uint parse(
 		std::ifstream& inFile,
-		std::vector<edge>& initGraph,
+		std::vector<struct edge>& initGraph,
 		const long long arbparam,
 		const bool nondirected );
 }

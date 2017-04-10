@@ -24,6 +24,16 @@ struct Edge{
 
 };
 
+struct time_result {
+	double comp_time;
+	double filter_time;
+};
+
+struct edge {
+  unsigned int u;
+  unsigned int v;
+  unsigned int w;
+};
 
 
 #endif	//	USER_SPECIFIED_STRUCTURES_H

@@ -8,7 +8,7 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 #include "enumerations.hpp"
-#include "graph.h"
+#include "user_specified_structures.h"
 
 #define WARP_NUM 32
 
@@ -157,7 +157,7 @@ __global__ void bmf_tpe_incore_kernel(
     }
 }
 
-void work_efficient_out_core(
+struct time_result work_efficient_out_core(
     const struct edge * L, 
     int * dist_prev, 
     int * dist_curr, 
@@ -211,32 +211,29 @@ void work_efficient_out_core(
     cudaMemcpy(d_Y, Y, warpsNeeded * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
 
+    double coretime = 0.0;
+    double filttime = 0.0;
     for (int i = 0; i < numVertices - 1; i++) {
+
+        setTime();
         bmf_tpe_outcore_kernel<<<blockNum, blockSize>>>(d_T, *num_tpe, d_dist_prev, d_dist_curr, d_changed_mask);
         cudaDeviceSynchronize();
+        coretime += getTime();
 
         // Swap dist curr into dist prev
         cudaMemcpy(dist_prev, d_dist_prev, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(dist_curr, d_dist_curr, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
-
-        // std::cout << "Copied from device:" << std::endl;
-        // for (int j = 0; j < 20; j++) {
-        //     std::cout << "dist_prev[" << j << "] = " << dist_prev[j] << std::endl;
-        // }
-
-        // for (int j = 0; j < 20; j++) {
-        //     std::cout << "dist_curr[" << j << "] = " << dist_curr[j] << std::endl;
-        // }
-
-        // std::cin.get();
 
         memcpy(dist_prev, dist_curr, numVertices * sizeof(int));
         cudaMemcpy(d_dist_prev, dist_prev, numVertices * sizeof(int), cudaMemcpyHostToDevice);
 
         *num_tpe = 0;
         cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
+
+        setTime();
         count_edges<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_X, d_num_tpe, numEdges);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
         cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
         std::cout << "numtpe: " << *num_tpe << std::endl;
@@ -247,11 +244,15 @@ void work_efficient_out_core(
             break;
         }
 
+        setTime();
         get_offset<<<1, warpsNeeded, warpsNeeded * sizeof(int)>>>(d_X, d_Y, warpsNeeded);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
+        setTime();
         copy_tpe<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_T, numEdges);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
         cudaMemcpy(T, d_T, *num_tpe * sizeof(struct edge), cudaMemcpyDeviceToHost);
         // for (int i = 0; i < *num_tpe; i++) {
@@ -265,9 +266,16 @@ void work_efficient_out_core(
         cudaMemcpy(d_changed_mask, changed_mask, numVertices * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_T, T, *num_tpe * sizeof(struct edge), cudaMemcpyHostToDevice);
     }
+    
+    struct time_result ret_time;
+
+    ret_time.comp_time = coretime;
+    ret_time.filter_time = filttime;
+
+    return ret_time;
 }
 
-void work_efficient_in_core(
+struct time_result work_efficient_in_core(
     const struct edge * L, 
     int * dist,
     const int numVertices, 
@@ -317,14 +325,22 @@ void work_efficient_in_core(
     cudaMemcpy(d_Y, Y, warpsNeeded * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
 
+    double coretime = 0.0;
+    double filttime = 0.0;
+
     for (int i = 0; i < numVertices - 1; i++) {
+        setTime();
         bmf_tpe_incore_kernel<<<blockNum, blockSize>>>(d_T, *num_tpe, d_dist, d_changed_mask);
         cudaDeviceSynchronize();
+        coretime += getTime();
 
         *num_tpe = 0;
         cudaMemcpy(d_num_tpe, num_tpe, sizeof(int), cudaMemcpyHostToDevice);
+
+        setTime();
         count_edges<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_X, d_num_tpe, numEdges);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
         cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
         // std::cout << "numtpe: " << *num_tpe << std::endl;
@@ -335,11 +351,15 @@ void work_efficient_in_core(
             break;
         }
 
+        setTime();
         get_offset<<<1, warpsNeeded, warpsNeeded * sizeof(int)>>>(d_X, d_Y, warpsNeeded);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
+        setTime();
         copy_tpe<<<blockNum, blockSize>>>(d_L, d_changed_mask, d_T, numEdges);
         cudaDeviceSynchronize();
+        filttime += getTime();
 
         cudaMemcpy(T, d_T, *num_tpe * sizeof(struct edge), cudaMemcpyDeviceToHost);
         // for (int i = 0; i < *num_tpe; i++) {
@@ -353,9 +373,18 @@ void work_efficient_in_core(
         cudaMemcpy(d_changed_mask, changed_mask, numVertices * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_T, T, *num_tpe * sizeof(struct edge), cudaMemcpyHostToDevice);
     }
+
+    cudaMemcpy(dist, d_dist, numVertices * sizeof(int), cudaMemcpyDeviceToHost);
+
+    struct time_result ret_time;
+
+    ret_time.comp_time = coretime;
+    ret_time.filter_time = filttime;
+
+    return ret_time;
 }
 
-void neighborHandler(
+struct time_result neighborHandler(
     std::vector<edge> * peeps, 
     const int blockSize, 
     const int blockNum, 
@@ -363,8 +392,6 @@ void neighborHandler(
     const enum SyncMode syncMethod,
     std::ofstream& outputFile) {
 
-
-    setTime();
 
     // Create edge list array
     int numEdges = peeps->size();
@@ -391,12 +418,13 @@ void neighborHandler(
         }
     }
 
+    struct time_result ret_time;
     switch (syncMethod) {
         case OutOfCore:
-            work_efficient_out_core(L, dist_prev, dist_curr, numVertices, numEdges, blockSize, blockNum);
+            ret_time = work_efficient_out_core(L, dist_prev, dist_curr, numVertices, numEdges, blockSize, blockNum);
             break;
         case InCore:
-            work_efficient_in_core(L, dist_curr, numVertices, numEdges, blockSize, blockNum);
+            ret_time = work_efficient_in_core(L, dist_curr, numVertices, numEdges, blockSize, blockNum);
             break;
         default:
             std::cout << "Invalid processing method" << std::endl;
@@ -410,6 +438,5 @@ void neighborHandler(
 
     outputFile.close();
 
-
-    std::cout << "Took " << getTime() << "ms.\n";
+    return ret_time;
 }

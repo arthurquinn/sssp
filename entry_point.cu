@@ -10,6 +10,7 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 #include "enumerations.hpp"
+#include "user_specified_structures.h"
 
 #include "opt.cu"
 #include "impl2.cu"
@@ -113,40 +114,42 @@ int main( int argc, char** argv )
 		if( !outputFile.is_open() )
 			openFileToAccess< std::ofstream >( outputFile, "out.txt" );
 		CUDAErrorCheck( cudaSetDevice( selectedDevice ) );
-		std::cout << "Device with ID " << selectedDevice << " is selected to process the graph.\n";
+		// std::cout << "Device with ID " << selectedDevice << " is selected to process the graph.\n";
 
 
 		/********************************
 		 * Read the input graph file.
 		 ********************************/
 
-		std::cout << "Collecting the input graph ...\n";
+		// std::cout << "Collecting the input graph ...\n";
 		std::vector<edge> parsedGraph;
 		uint numVertices = parse_graph::parse(
 				inputFile,		// Input file.
 				parsedGraph,	// The parsed graph.
 				arbparam,
 				nonDirectedGraph );		// Arbitrary user-provided parameter.
-		std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
+		// std::cout << "Input graph collected with " << numVertices << " vertices and " << parsedGraph.size() << " edges.\n";
 
 		/********************************
 		 * Process the graph.
 		 ********************************/
 
+		struct time_result time;
 
 		switch(processingMethod){
 		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod, outputFile);
+		    time = puller(&parsedGraph, bsize, bcount, numVertices, syncMethod, smemMethod, outputFile);
 		    break;
 		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod, outputFile);
+		    time = neighborHandler(&parsedGraph, bsize, bcount, numVertices, syncMethod, outputFile);
 		    break;
 		// default:
 		    // own(&parsedGraph, bsize, bcount);
 		}
 		
 		
-
+		std::cout << "The total computation kernel time on GPU " << selectedDevice << " is " << time.comp_time << " milli-seconds" << std::endl;
+		std::cout << "The total filtering kernel time on GPU " << selectedDevice << " is " << time.filter_time << " milli-seconds" << std::endl;
 		/********************************
 		 * It's done here.
 		 ********************************/

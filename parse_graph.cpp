@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <iostream>
 
-#include "graph.h"
 #include "parse_graph.hpp"
 
 // Parse the an input file into a vector of edges 
