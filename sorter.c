@@ -72,18 +72,21 @@ int main (int argc, char* argv [])
 	{
 		Nedges++;
 		//printf("Line:%d -> %s", line, input);
+		
 	}
 	rewind(fp);
 	
-	int source[Nedges] ;
-	int dest[Nedges];
-	int weight[Nedges];
-
+	//int source[Nedges] ;
+	int *source = malloc(Nedges*sizeof(int));
+	//int dest[Nedges];
+	int *dest = malloc(Nedges*sizeof(int));
+	//int weight[Nedges];
+	int *weight = malloc(Nedges*sizeof(int));
 	int x = 0;
 	int var;
-	int words[Nedges*3];
+	//int words[Nedges*3];
+	int *words = malloc(3*Nedges*sizeof(int));
 	char* token;
-	
 	while ( fgets(input, 512, fp ) != NULL) // read a line at a time.
     {
          token = strtok (input," 	\n");
@@ -96,7 +99,7 @@ int main (int argc, char* argv [])
 			x++;
          }
     }
-	
+	printf("AFTER read a line loop \n");
 	fclose(fp);
 	
 	if ( strcmp(weightornot , "weighted") ){
@@ -106,7 +109,7 @@ int main (int argc, char* argv [])
           Weighted( source, dest, weight, words, Nedges);
         }  
 
-		
+	printf("AFTER weighted or unweighted loop loop \n");	
 		
 	if ( strcmp(sourcedest, "source") ){
     	
@@ -114,6 +117,8 @@ int main (int argc, char* argv [])
 	}else{
          BubbleSort(source, dest, weight, Nedges); 	
          } 
+		 
+	printf("AFTER sorting loop \n");	 
 	// Will sort with respect to dest in this case. To sort source, just swap dest and source. Works for both weighted and unweighted.
 	 
 	
@@ -128,6 +133,7 @@ int main (int argc, char* argv [])
 	}
 
 	fclose(fp2);
+	printf("Done!\n");
 	
 	return 0;
 }
