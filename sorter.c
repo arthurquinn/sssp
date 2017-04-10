@@ -136,7 +136,7 @@ int main (int argc, char* argv [])
 	free(source);
 	free(dest);
 	free(weight);
-	free(words)
+	free(words);
 	printf("Done!\n");
 	
 	return 0;
