@@ -54,3 +54,9 @@ These are some of the command line arguments used to test the program :
 	./sssp --input Nutella04Dest.txt --bsize 512 --bcount 4 --output outputDestS.txt --method tpe --usesmem yes --sync outcore
 	./sssp --input Nutella04Dest.txt --bsize 768 --bcount 2 --output outputDestS.txt --method tpe --usesmem yes --sync outcore
 	./sssp --input Nutella04Dest.txt --bsize 1024 --bcount 2 --output outputDestS.txt --method tpe --usesmem yes --sync outcore
+	
+Should pring out something like this on the console and will make a output file....
+
+The total computation kernel time on GPU 0 is 0.335 milli-seconds
+The total filtering kernel time on GPU 0 is 1.037 milli-seconds
+Done.
