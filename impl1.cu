@@ -308,16 +308,16 @@ struct time_result puller(std::vector<edge> * peeps, int blockSize, int blockNum
     double time = 0.0f;
     switch (syncMethod) {
         case InCore:
-            // std::cout << "Starting incore" << std::endl;
+            std::cout << "Starting incore" << std::endl;
             time = bellman_ford_incore(L, dist_curr, numEdges, numVertices, blockNum, blockSize);
             break;
         case OutOfCore:
             if (smemMode == UseNoSmem) {
-                // std::cout << "Starting outcore" << std::endl;
+                std::cout << "Starting outcore" << std::endl;
                 time = bellman_ford_outcore(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
             }
             else if (smemMode == UseSmem) {
-                // std::cout << "Starting segment scan" << std::endl;
+                std::cout << "Starting segment scan" << std::endl;
                 time = bellman_ford_segment_scan(L, dist_prev, dist_curr, numEdges, numVertices, blockNum, blockSize);
             } else {
                 std::cout << "Invalid shared memory specification" << std::endl;

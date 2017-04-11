@@ -236,11 +236,11 @@ struct time_result work_efficient_out_core(
         filttime += getTime();
 
         cudaMemcpy(num_tpe, d_num_tpe, sizeof(int), cudaMemcpyDeviceToHost);
-        // std::cout << "numtpe: " << *num_tpe << std::endl;
+        //std::cout << "numtpe: " << *num_tpe << std::endl;
         // std::cin.get();
 
         if (*num_tpe == 0) {
-            // std::cout << "I'm done here after " << i << " iterations" << std::endl;
+            std::cout << "I'm done here after " << i << " iterations" << std::endl;
             break;
         }
 
@@ -347,7 +347,7 @@ struct time_result work_efficient_in_core(
         // std::cin.get();
 
         if (*num_tpe == 0) {
-            // std::cout << "I'm done here after " << i << " iterations" << std::endl;
+            std::cout << "I'm done here after " << i << " iterations" << std::endl;
             break;
         }
 
